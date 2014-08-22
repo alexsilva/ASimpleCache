@@ -15,17 +15,32 @@
  */
 package org.afinal.simplecache;
 
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.PixelFormat;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.io.Serializable;
 import java.util.Collections;
@@ -35,17 +50,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.PixelFormat;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
 
 /**
  * @author Michael Yang（www.yangfuhai.com） update at 2013.08.07
@@ -96,6 +100,38 @@ public class ACache {
 		}
 		mCache = new ACacheManager(cacheDir, max_size, max_count);
 	}
+
+    /**
+     * Provides a means to save a cached file before the data are available.
+     * Since writing about the file is complete, and its close method is called,
+     * its contents will be registered in the cache.
+     * Example of use:
+     *
+     * ACache cache = new ACache(this)
+     * try {
+     *   OutputStream stream = cache.put("myFileName")
+     *   stream.write("some bytes".getBytes());
+     *   // now update cache!
+     *   stream.close();
+     * } catch(FileNotFoundException e){
+     *   e.printStackTrace()
+     * }
+     */
+    class xFileOutputStream extends FileOutputStream {
+        File file;
+
+        public xFileOutputStream(File file) throws FileNotFoundException {
+            super(file);
+            this.file = file;
+        }
+
+        public void close() throws IOException {
+            super.close();
+            // fix: TimeoutException in finalize.
+            if (mCache.get(file.getName()) == null)
+                mCache.put(file);
+        }
+    }
 
 	// =======================================
 	// ============ String数据 读写 ==============
@@ -275,6 +311,29 @@ public class ACache {
 			return null;
 		}
 	}
+
+    /**
+     * Cache for a stream
+     * @param key the file name.
+     * @return OutputStream  stream for writing data.
+     * @throws FileNotFoundException  if the file can not be created.
+     */
+    public OutputStream put(String key) throws FileNotFoundException {
+        return new xFileOutputStream(mCache.newFile(key));
+    }
+
+    /**
+     *
+     * @param key the file name.
+     * @return (InputStream or null)  stream previously saved in cache.
+     * @throws FileNotFoundException  if the file can not be opened
+     */
+    public InputStream get(String key) throws FileNotFoundException {
+        File file = mCache.get(key);
+        if (!file.exists())
+            return null;
+        return new FileInputStream(file);
+    }
 
 	// =======================================
 	// ============== byte 数据 读写 =============
